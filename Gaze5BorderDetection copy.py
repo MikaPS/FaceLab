@@ -241,43 +241,61 @@ def find_eye_coords(angle, translation, participantID):
 trial_times = [] # will hold arrays of face appears to face disappears timings, skipping the first trial
 eye_coords_left = [] # will hold arrays for the AOI of the left eye, based on trial
 eye_coords_right = []
-buffer_instruction_disappear_time = 6.5 #- 0.0744 # the video for the first participant starts before the first trial, so I checked when the instructions disappear and the clock starts
+# the video for the first participant starts before the first trial, so I checked when the instructions disappear and the clock starts
+buffer_instruction_disappear_times = [6.5, 13.4, 5.5]  
 # rt_buffer = 0.03
-def read_matlab():
-    prev_exp_time = 13.19
-    # looks at all the files in the folder
-    for filename in os.listdir("matlab_data"):
-        print("file name:" + filename)
-        f = os.path.join("matlab_data", filename)
-        with open(f, 'r') as file:
-            lines = file.readlines() 
-            lines_array = []
-            for line in lines:
-                l = line.split(",")
-                if l[1].isdigit() and float(l[1]) > 1: # ignore first trial
-                    # timing
-                    exp_time = float(l[9])
-                    rt = float(l[8])
-                    print("trial: " + l[1], " current exp time: " + l[9] + " rt: " + l[8] + " prev exp time: " + str(prev_exp_time))
-                    # duration_of_face = exp_time - rt
-                    time_before_face_appears = exp_time - prev_exp_time - rt
-                    duration_of_face = exp_time - prev_exp_time - time_before_face_appears
-                    print("duration of time face was on screen: ", str(duration_of_face))
-                    print(" prev exp time: " + str(prev_exp_time) + " time befoer face appears: " + str(time_before_face_appears))
-                    face_appears = prev_exp_time + time_before_face_appears 
-                    face_disappears = face_appears + duration_of_face
-                    trial_times.append([face_appears+buffer_instruction_disappear_time, face_disappears+buffer_instruction_disappear_time])
-                    # coords
-                    angle = int(l[5])
-                    translation = int(l[6])
-                    find_eye_coords(angle, translation, 1)
 
-                    # print("trial times: " , trial_times)
-                    prev_exp_time = float(l[9])
-                # stops after the 5th trial just for testing
-                if l[1].isdigit() and float(l[1]) > 15: 
-                    break
-                lines_array.append(l)
+# vars used to write to the output files
+    # first fixation by trial 
+first_fixation_header = ["participant", "trial", "first eye fixation"]
+first_fixation_data = []
+    # proportion based on angle + height
+proportion_header = ["participant", "angle", "height", "proportion"]
+proportion_data = [""]
+
+def read_matlab(f, participant_num):
+    trial_times.clear()
+    eye_coords_left.clear()
+    eye_coords_right.clear()
+    # looks at all the files in the folder
+    # for filename in os.listdir("matlab_data"):
+    #     print("file name:" + filename)
+    #     f = os.path.join("matlab_data", filename)
+    with open(f, 'r') as file:
+        participant_index = participants.index(participant_num)
+        buffer_instruction_disappear_time = buffer_instruction_disappear_times[participant_index]
+        lines = file.readlines() 
+        lines_array = []
+        for line in lines:
+            l = line.split(",")
+            # gets when the first trial ended
+            if l[1].isdigit() and float(l[1]) == 1:
+                prev_exp_time = float(l[9])
+            if l[1].isdigit() and float(l[1]) > 1: # ignore first trial
+                print (prev_exp_time)
+                # timing
+                exp_time = float(l[9])
+                rt = float(l[8])
+                print("trial: " + l[1], " current exp time: " + l[9] + " rt: " + l[8] + " prev exp time: " + str(prev_exp_time))
+                # duration_of_face = exp_time - rt
+                time_before_face_appears = exp_time - prev_exp_time - rt
+                duration_of_face = exp_time - prev_exp_time - time_before_face_appears
+                print("duration of time face was on screen: ", str(duration_of_face))
+                print(" prev exp time: " + str(prev_exp_time) + " time befoer face appears: " + str(time_before_face_appears))
+                face_appears = prev_exp_time + time_before_face_appears 
+                face_disappears = face_appears + duration_of_face
+                trial_times.append([face_appears+buffer_instruction_disappear_time, face_disappears+buffer_instruction_disappear_time])
+                # coords
+                angle = int(l[5])
+                translation = int(l[6])
+                find_eye_coords(angle, translation, participant_num)
+
+                # print("trial times: " , trial_times)
+                prev_exp_time = float(l[9])
+            # stops after the 5th trial just for testing
+            # if l[1].isdigit() and float(l[1]) > 15: 
+            #     break
+            lines_array.append(l)
     # print(lines_array)
     print("trial times: ", trial_times)
     print("eye coords left: ", eye_coords_left)
@@ -293,49 +311,88 @@ def read_matlab():
     # face appears at trial 2 at 21.50, disappears 23.10
     # problem: my code says that the face appears for 23.138-21.5744=1.5636 while the video was 23.10-21.50=1.6, and I am not sure how to account for that 
 
-read_matlab()
+# read_matlab()
 
-def read_gazepoint():
-    for filename in os.listdir("gazepoint_data"):
-        # print("file name:" + filename)
-        f = os.path.join("gazepoint_data", filename)
-        with open(f, 'r') as file:
-            lines = file.readlines() 
-            count = 0
-
-            for line in lines:
-                l = line.split(",")
-                print("in gazepoint, current line is", l)
-                if (l[0] != "MEDIA_ID"):
-                    print("TRIAL " , count+2)
-                    time = float(l[3])
-                    if (abs(trial_times[count][0] - time) < 0.1 or abs(trial_times[count][1] - time) < 0.1 or (time < trial_times[count][1] and time > trial_times[count][0])):
-                        print("found a match! current time of fixation" , time, " is in time interval from matlab: ", trial_times[count][0], " and ", trial_times[count][1])
-                        # get where the participant looked
-                        participant_x = float(l[5])*monitor_width
-                        participant_y = float(l[6])*monitor_height#+100
-                        print("looking at x: ", participant_x, " y: ", participant_y)
-                        # compare to AOI of the trial
-                        print("left eye coords: ", eye_coords_left[count])
-                        print("right eye coords: ", eye_coords_right[count])
-                        isInLeftAOI = cv.pointPolygonTest(np.array(eye_coords_left[count], dtype=np.int32), [participant_x, participant_y], True)
-                        isInRightAOI = cv.pointPolygonTest(np.array(eye_coords_right[count], dtype=np.int32), [participant_x, participant_y], True)
-                        print("distance from left: ", isInLeftAOI, " distance from right: ", isInRightAOI)
-                        AOIdist = 40
-                        if (isInRightAOI >= -AOIdist and isInLeftAOI >= -AOIdist):
-                            print("participant looked at both eye!")
-                        elif (isInLeftAOI >= -AOIdist and isInRightAOI < -AOIdist):
-                            print("participant looked at left eye!")
-                        elif (isInRightAOI >= -AOIdist and isInLeftAOI < -AOIdist):
-                            print("participant looked at right eye!")
-                        else:
-                            print("participant looked at neither eye")
+def read_gazepoint(f, participant_num):
+    # for filename in os.listdir("gazepoint_data"):
+    #     # print("file name:" + filename)
+    #     f = os.path.join("gazepoint_data", filename)
+    with open(f, 'r') as file:
+        flag = 0
+        lines = file.readlines() 
+        count = 0
+        trial_line_count = 0
+        for line in lines:
+            l = line.split(",")
+            print("in gazepoint, current line is", l)
+            if (l[0] != "MEDIA_ID"):
+                print("TRIAL " , count+2)
+                time = float(l[3])
+                if (abs(trial_times[count][0] - time) < 0.1 or abs(trial_times[count][1] - time) < 0.1 or (time < trial_times[count][1] and time > trial_times[count][0])):
+                    trial_line_count += 1
+                    print("found a match! current time of fixation" , time, " is in time interval from matlab: ", trial_times[count][0], " and ", trial_times[count][1])
+                    # get where the participant looked
+                    participant_x = float(l[5])*monitor_width
+                    participant_y = float(l[6])*monitor_height#+100
+                    print("looking at x: ", participant_x, " y: ", participant_y)
+                    # compare to AOI of the trial
+                    print("left eye coords: ", eye_coords_left[count])
+                    print("right eye coords: ", eye_coords_right[count])
+                    isInLeftAOI = cv.pointPolygonTest(np.array(eye_coords_left[count], dtype=np.int32), [participant_x, participant_y], True)
+                    isInRightAOI = cv.pointPolygonTest(np.array(eye_coords_right[count], dtype=np.int32), [participant_x, participant_y], True)
+                    print("distance from left: ", isInLeftAOI, " distance from right: ", isInRightAOI)
+                    AOIdist = 40
+                    isRightEye = -1 # -1 = neither, 0 = left, 1 = right, 2 = both
+                    if (isInRightAOI >= -AOIdist and isInLeftAOI >= -AOIdist):
+                        print("participant looked at both eye!")
+                        isRightEye = 2
+                    elif (isInLeftAOI >= -AOIdist and isInRightAOI < -AOIdist):
+                        print("participant looked at left eye!")
+                        isRightEye = 0
+                    elif (isInRightAOI >= -AOIdist and isInLeftAOI < -AOIdist):
+                        print("participant looked at right eye!")
+                        isRightEye = 1
                     else:
-                        if (time > trial_times[count][0]):
-                            count += 1
-                    if (count == 15):
-                        break
-read_gazepoint()
+                        print("participant looked at neither eye")
+
+                    if (trial_line_count == 1):
+                        print("appending data for csv", trial_line_count)
+                        print("currrent participant 2: ", participant_num)
+
+                        first_fixation_data.append([str(participant_num), str(count+2), str(isRightEye)])
+                else:
+                    if (time > trial_times[count][0]):
+                        count += 1
+                        trial_line_count = 0
+                if (count >= len(trial_times)):
+                    break
+# read_gazepoint()
+
+participants = [1, 3, 6]
+def read_participant_files():
+    print("lisitng directories!!")
+    gazepoint_files = os.listdir("gazepoint_data")
+    matlab_files = os.listdir("matlab_data")
+
+    for participant in participants:
+        current_participant = participant
+        print("currrent participant: ", current_participant)
+        participant_index = participants.index(current_participant)
+        read_matlab(os.path.join("matlab_data", matlab_files[participant_index]), current_participant)
+        read_gazepoint(os.path.join("gazepoint_data", gazepoint_files[participant_index]), current_participant)
+
+read_participant_files()
+# ----------
+#  Create the output files
+# ---------
+first_fixation_file_path = "./data/first_fixation.txt"
+with open(first_fixation_file_path, "w", newline="") as file:
+    writer = csv.writer(file)
+    # Write first header and data
+    writer.writerow(first_fixation_header)
+    writer.writerows(first_fixation_data)
+
+
 # ----------
 #  Code used to find the top left corner of each window:
 # ----------
