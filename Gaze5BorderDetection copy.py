@@ -3,6 +3,8 @@ import numpy as np
 import os # used to loop through files
 import csv # used to write data to csv
 import sys
+from collections import defaultdict
+
 # will resize the image to the monitor size to ensure the coordinates will match the x,y coords from the eye tracker
 monitor_width = 1680
 monitor_height = 1050
@@ -43,8 +45,8 @@ def update_screen_pos(participantID):
 # draw rectangles around the eyes of the participants in different angles and translations
 def rects_for_eyes():
     # change the angle var to go through different test files
-    angle = 315
-    directory = './angles/'+str(angle)
+    angle_path = 45
+    directory = './angles/'+str(angle_path)
     # directory = './angles/subject10'
 
     def rotate_points(img, top_left, bottom_right, color):
@@ -93,7 +95,7 @@ def rects_for_eyes():
             left_eye_bottom_right = [910+int(x_trans), int(400+y_trans)]
             right_eye_top_left = [928+int(x_trans),int(313+y_trans)]
             right_eye_bottom_right = [1028+int(x_trans), int(400+y_trans)]
-            # draw boundries on eyes
+            # draw boundries on eyesi
             cv.rectangle(img, left_eye_top_left, left_eye_bottom_right, (255,0,0), 3)
             cv.rectangle(img, right_eye_top_left, right_eye_bottom_right, (0,255,0), 3)
         elif (angle == 45):
@@ -117,7 +119,7 @@ def rects_for_eyes():
     def setup_image(img_path):
         img = cv.imread(img_path)
         img = cv.resize(img, (monitor_width, monitor_height))
-        print(img_path)
+        print("img path in setup image: ", img_path)
         # use the image path to understand the angle and the translation
             # names of images are: "angleX_translation" 
             # ex. "angle315_down"
@@ -241,53 +243,73 @@ def find_eye_coords(angle, translation, participantID):
 trial_times = [] # will hold arrays of face appears to face disappears timings, skipping the first trial
 eye_coords_left = [] # will hold arrays for the AOI of the left eye, based on trial
 eye_coords_right = []
+angles_prop = []
+translations_prop = []
+prop_dict = defaultdict(lambda: defaultdict(int))
+total_prop_dict = defaultdict(lambda: defaultdict(int))
+time_spend_per_trial_list = []
+
 # the video for the first participant starts before the first trial, so I checked when the instructions disappear and the clock starts
-buffer_instruction_disappear_times = [6.5, 13.4, 5.5]  
+# buffer_instruction_disappear_times = [6.5]#[6.5, 13.4, 5.5]  
+trial_2_start = [19.8, 31.9, 13.00, 9.9, 20.30, 14.0, 25.8, 8.0, 21.9, 10.0, 14.0, 26.60, 19.6, 38.80, 10.2, 75.8, 43.70, 20.80, 80.7, 11.9, 18.3, 46.5, 14.2]
 # rt_buffer = 0.03
 
 # vars used to write to the output files
     # first fixation by trial 
-first_fixation_header = ["participant", "trial", "first eye fixation"]
+first_fixation_header = ["participant", "trial", "first eye fixation", "angle", "translation"]
 first_fixation_data = []
     # proportion based on angle + height
 proportion_header = ["participant", "angle", "height", "proportion"]
 proportion_data = [""]
+    # left vs right proportion in each trial
+time_spent_on_left_in_trial_header = ["participant", "trial", "proportion to left eye", "angle", "translation"]
+time_spent_on_left_in_trial_data = []
+
+
 
 def read_matlab(f, participant_num):
     trial_times.clear()
     eye_coords_left.clear()
     eye_coords_right.clear()
+    angles_prop.clear()
+    translations_prop.clear()
     # looks at all the files in the folder
     # for filename in os.listdir("matlab_data"):
     #     print("file name:" + filename)
     #     f = os.path.join("matlab_data", filename)
     with open(f, 'r') as file:
         participant_index = participants.index(participant_num)
-        buffer_instruction_disappear_time = buffer_instruction_disappear_times[participant_index]
+        #buffer_instruction_disappear_time = buffer_instruction_disappear_times[participant_index]
         lines = file.readlines() 
         lines_array = []
+        
         for line in lines:
             l = line.split(",")
             # gets when the first trial ended
             if l[1].isdigit() and float(l[1]) == 1:
                 prev_exp_time = float(l[9])
+                buffer_instruction_disappear_time = trial_2_start[participant_index] - prev_exp_time
+                print("buffer: ", buffer_instruction_disappear_time, " trial 2 start: ", trial_2_start[participant_index], " prev exp: ", prev_exp_time)
             if l[1].isdigit() and float(l[1]) > 1: # ignore first trial
                 print (prev_exp_time)
                 # timing
                 exp_time = float(l[9])
                 rt = float(l[8])
-                print("trial: " + l[1], " current exp time: " + l[9] + " rt: " + l[8] + " prev exp time: " + str(prev_exp_time))
+                print("trial: " + l[1], " current exp tme: " + l[9] + " rt: " + l[8] + " prev exp time: " + str(prev_exp_time))
                 # duration_of_face = exp_time - rt
                 time_before_face_appears = exp_time - prev_exp_time - rt
                 duration_of_face = exp_time - prev_exp_time - time_before_face_appears
                 print("duration of time face was on screen: ", str(duration_of_face))
                 print(" prev exp time: " + str(prev_exp_time) + " time befoer face appears: " + str(time_before_face_appears))
-                face_appears = prev_exp_time + time_before_face_appears 
+                face_appears = prev_exp_time + time_before_face_appears  #1.8239
                 face_disappears = face_appears + duration_of_face
                 trial_times.append([face_appears+buffer_instruction_disappear_time, face_disappears+buffer_instruction_disappear_time])
+                #video: trial 2 starts : 31.9, face appears: 33.6, time before face: 1.7
                 # coords
                 angle = int(l[5])
                 translation = int(l[6])
+                angles_prop.append(angle)
+                translations_prop.append(translation)
                 find_eye_coords(angle, translation, participant_num)
 
                 # print("trial times: " , trial_times)
@@ -300,6 +322,8 @@ def read_matlab(f, participant_num):
     print("trial times: ", trial_times)
     print("eye coords left: ", eye_coords_left)
     print("eye coords right: ", eye_coords_right)
+    print("all angles: " , angles_prop)
+    print("all translations: ", translations_prop)
 
     # first trial is at about 2.64
     # time between current face disappearing and the next appearing = current exp time - prev exp time - RT
@@ -338,60 +362,133 @@ def read_gazepoint(f, participant_num):
                     # compare to AOI of the trial
                     print("left eye coords: ", eye_coords_left[count])
                     print("right eye coords: ", eye_coords_right[count])
-                    isInLeftAOI = cv.pointPolygonTest(np.array(eye_coords_left[count], dtype=np.int32), [participant_x, participant_y], True)
-                    isInRightAOI = cv.pointPolygonTest(np.array(eye_coords_right[count], dtype=np.int32), [participant_x, participant_y], True)
-                    print("distance from left: ", isInLeftAOI, " distance from right: ", isInRightAOI)
-                    AOIdist = 40
-                    isRightEye = -1 # -1 = neither, 0 = left, 1 = right, 2 = both
-                    if (isInRightAOI >= -AOIdist and isInLeftAOI >= -AOIdist):
+                    left_eye_coords = np.array(eye_coords_left[count]).reshape(-1, 2)
+                    right_eye_coords = np.array(eye_coords_right[count]).reshape(-1, 2)
+
+                    
+                    
+                    # Calculate centers of the eyes
+                    left_eye_center = np.mean(left_eye_coords, axis=0)
+                    right_eye_center = np.mean(right_eye_coords, axis=0)
+                    print("Left eye center:", left_eye_center)  # This should print [x, y] coordinates
+                    print("Right eye center:", right_eye_center)
+                    # Calculate Euclidean distances
+                    distance_to_left = np.sqrt((participant_x - left_eye_center[0])**2 + (participant_y - left_eye_center[1])**2)
+                    distance_to_right = np.sqrt((participant_x - right_eye_center[0])**2 + (participant_y - right_eye_center[1])**2)
+                    print("dist to left: ", distance_to_left, " dist to right: ", distance_to_right)
+                    
+                    isLeftEye = -1 # -1 = neither, 1 = left, 0 = right, 2 = both
+                    AOIdist = 90
+                    if (distance_to_right <= AOIdist and distance_to_left <= AOIdist):
                         print("participant looked at both eye!")
-                        isRightEye = 2
-                    elif (isInLeftAOI >= -AOIdist and isInRightAOI < -AOIdist):
+                        isLeftEye = 2
+                    elif (distance_to_left <= AOIdist and distance_to_right > AOIdist):
                         print("participant looked at left eye!")
-                        isRightEye = 0
-                    elif (isInRightAOI >= -AOIdist and isInLeftAOI < -AOIdist):
+                        isLeftEye = 1
+                    elif (distance_to_right <= AOIdist and distance_to_left > AOIdist):
                         print("participant looked at right eye!")
-                        isRightEye = 1
+                        isLeftEye = 0
                     else:
                         print("participant looked at neither eye")
 
+
+                    # isInLeftAOI = cv.pointPolygonTest(np.array(eye_coords_left[count], dtype=np.int32), [participant_x, participant_y], True)
+                    # isInRightAOI = cv.pointPolygonTest(np.array(eye_coords_right[count], dtype=np.int32), [participant_x, participant_y], True)
+                    # print("distance from left: ", isInLeftAOI, " distance from right: ", isInRightAOI)
+                    # AOIdist = 40
+                    # isLeftEye = -1 # -1 = neither, 1 = left, 0 = right, 2 = both
+                    # if (isInRightAOI >= -AOIdist and isInLeftAOI >= -AOIdist):
+                    #     print("participant looked at both eye!")
+                    #     isLeftEye = 2
+                    # elif (isInLeftAOI >= -AOIdist and isInRightAOI < -AOIdist):
+                    #     print("participant looked at left eye!")
+                    #     isLeftEye = 1
+                    # elif (isInRightAOI >= -AOIdist and isInLeftAOI < -AOIdist):
+                    #     print("participant looked at right eye!")
+                    #     isLeftEye = 0
+                    # else:
+                    #     print("participant looked at neither eye")
+                    # print("total prop: ", total_prop_dict, "angle:", angles_prop[count], "translation: ", translations_prop[count])
+                    
+                    # total_prop_dict[315][2] += 1
+                    # validity
+                    if (float(l[10]) == 1):
+                        time_spend_per_trial_list.append(isLeftEye)
+                    if (float(l[10]) == 0 and trial_line_count<=1): 
+                        trial_line_count -= 1
+                    # save proportions
                     if (trial_line_count == 1):
                         print("appending data for csv", trial_line_count)
                         print("currrent participant 2: ", participant_num)
 
-                        first_fixation_data.append([str(participant_num), str(count+2), str(isRightEye)])
+                        first_fixation_data.append([str(participant_num), str(count+2), str(isLeftEye), angles_prop[count], translations_prop[count]])
+                        total_prop_dict[angles_prop[count]][translations_prop[count]] += 1
+                        if (distance_to_left <= AOIdist and distance_to_right > AOIdist):
+                            prop_dict[angles_prop[count]][translations_prop[count]] += 1
+
                 else:
                     if (time > trial_times[count][0]):
                         count += 1
                         trial_line_count = 0
+                        num_left_per_trial = time_spend_per_trial_list.count(1)
+                        total_time_of_trial = len(time_spend_per_trial_list)
+                        time = 0
+                        if (total_time_of_trial > 0):
+                            time = num_left_per_trial/total_time_of_trial
+                        time_spent_on_left_in_trial_data.append([str(participant_num), str(count+1), str(time), angles_prop[count-1], translations_prop[count-1]])
+                        time_spend_per_trial_list.clear()
                 if (count >= len(trial_times)):
                     break
 # read_gazepoint()
 
-participants = [1, 3, 6]
+participants = [1, 3, 6, 10, 15, 19, 23, 24, 31, 35, 38, 44, 57, 59, 60, 61, 63, 66, 70, 77, 96, 97, 99]
 def read_participant_files():
     print("lisitng directories!!")
     gazepoint_files = os.listdir("gazepoint_data")
     matlab_files = os.listdir("matlab_data")
 
     for participant in participants:
+        prop_dict.clear()
+        total_prop_dict.clear()
         current_participant = participant
         print("currrent participant: ", current_participant)
         participant_index = participants.index(current_participant)
         read_matlab(os.path.join("matlab_data", matlab_files[participant_index]), current_participant)
         read_gazepoint(os.path.join("gazepoint_data", gazepoint_files[participant_index]), current_participant)
+        
+        for angle, inner_dict in total_prop_dict.items():
+            print(f"Outer Key: {angle}")
+            for translation, count in inner_dict.items():
+                print(f"  Inner Key: {translation}, Value: {count}")
+                print("left eye: ", prop_dict[angle][translation])
+                proportion_data.append([str(current_participant), angle, translation, prop_dict[angle][translation]/count])
+        # if current_participant == 19:
+        #     break
 
 read_participant_files()
 # ----------
 #  Create the output files
 # ---------
-first_fixation_file_path = "./data/first_fixation.txt"
+# trial per line, which eye did they look at first?
+first_fixation_file_path = "./data/first_fixation.csv"
 with open(first_fixation_file_path, "w", newline="") as file:
     writer = csv.writer(file)
-    # Write first header and data
     writer.writerow(first_fixation_header)
     writer.writerows(first_fixation_data)
-
+# for all trials, based on height and angle, how often they looked at left eye first?
+prop_fixation_file_path = "./data/prop_first_fixation.csv"
+with open(prop_fixation_file_path, "w", newline="") as file:
+    writer = csv.writer(file)
+    # Write first header and data
+    writer.writerow(proportion_header)
+    writer.writerows(proportion_data)
+# trial per line, proportion of left to right eye
+prop_fixation_file_path = "./data/time_spent_per_trial.csv"
+with open(prop_fixation_file_path, "w", newline="") as file:
+    writer = csv.writer(file)
+    # Write first header and data
+    writer.writerow(time_spent_on_left_in_trial_header)
+    writer.writerows(time_spent_on_left_in_trial_data)
 
 # ----------
 #  Code used to find the top left corner of each window:
