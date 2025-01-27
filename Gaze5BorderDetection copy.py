@@ -34,6 +34,9 @@ def update_screen_pos(participantID):
         if "subject"+str(participantID)+".png" in row[0]:
             screen_translation[0] = default_screen_pos[0] - float(row[1])
             screen_translation[1] = default_screen_pos[1] - float(row[2])
+            if (participantID) == 59:
+                print("screen translation: ", screen_translation[0], screen_translation[1], "particpant: ", participantID)
+
             break
     # print(screen_translation)
     
@@ -177,7 +180,7 @@ def find_eye_coords(angle, translation, participantID):
     
     def eyes(transformation, angle):
         # height transformations:
-        x_trans = -screen_translation[0]
+        x_trans = - screen_translation[0]
         y_trans = 7 - screen_translation[1]
         y_trans_315 = -50 - screen_translation[1]
         x_trans_315 = -85 - screen_translation[0]
@@ -191,7 +194,7 @@ def find_eye_coords(angle, translation, participantID):
             y_trans_45 = 0 - screen_translation[1]
         elif (transformation == 2):
             y_trans = 115 - screen_translation[1]
-            y_trans_315 = 15 - screen_translation[1]
+            y_trans_315 = 20 - screen_translation[1]
             x_trans_315 = -10 - screen_translation[0]
             x_trans_45 = 85 - screen_translation[0]
             y_trans_45 = -85 - screen_translation[1]
@@ -226,8 +229,6 @@ def find_eye_coords(angle, translation, participantID):
             right = rotate_points(right_eye_top_left, right_eye_bottom_right)
             return [[left], [right]]
     
-    save_screen_pos()
-    update_screen_pos(participantID)
     # print("angle: ", angle, " translation: ", translation)
     coords = eyes(translation, angle)
     # print("coords: " , coords)
@@ -245,6 +246,8 @@ eye_coords_left = [] # will hold arrays for the AOI of the left eye, based on tr
 eye_coords_right = []
 angles_prop = []
 translations_prop = []
+human_coder = []
+human_computer_agreement = []
 prop_dict = defaultdict(lambda: defaultdict(int))
 total_prop_dict = defaultdict(lambda: defaultdict(int))
 time_spend_per_trial_list = []
@@ -256,7 +259,7 @@ trial_2_start = [19.8, 31.9, 13.00, 9.9, 20.30, 14.0, 25.8, 8.0, 21.9, 10.0, 14.
 
 # vars used to write to the output files
     # first fixation by trial 
-first_fixation_header = ["participant", "trial", "first eye fixation", "angle", "translation"]
+first_fixation_header = ["participant", "trial", "first eye fixation", "angle", "translation", "human_coder", "human_computer_agreement"]
 first_fixation_data = []
     # proportion based on angle + height
 proportion_header = ["participant", "angle", "height", "proportion"]
@@ -264,6 +267,9 @@ proportion_data = [""]
     # left vs right proportion in each trial
 time_spent_on_left_in_trial_header = ["participant", "trial", "proportion to left eye", "angle", "translation"]
 time_spent_on_left_in_trial_data = []
+    # agreements 
+first_fixation_agreement_header = ["participant", "human_computer_agreement"]
+first_fixation_agreement_data = []
 
 
 
@@ -273,6 +279,11 @@ def read_matlab(f, participant_num):
     eye_coords_right.clear()
     angles_prop.clear()
     translations_prop.clear()
+    human_coder.clear()
+    human_computer_agreement.clear()
+    save_screen_pos()
+    update_screen_pos(participant_num)
+
     # looks at all the files in the folder
     # for filename in os.listdir("matlab_data"):
     #     print("file name:" + filename)
@@ -308,6 +319,13 @@ def read_matlab(f, participant_num):
                 # coords
                 angle = int(l[5])
                 translation = int(l[6])
+                human = -2 # no coding
+                if len(l) > 11:
+                    if l[11].isdigit():
+                        human = int(l[11])
+                    elif l[11] == "-1":
+                        human = -1
+                human_coder.append(human)
                 angles_prop.append(angle)
                 translations_prop.append(translation)
                 find_eye_coords(angle, translation, participant_num)
@@ -346,43 +364,42 @@ def read_gazepoint(f, participant_num):
         lines = file.readlines() 
         count = 0
         trial_line_count = 0
+        total_agreement = 0
         for line in lines:
             l = line.split(",")
-            print("in gazepoint, current line is", l)
             if (l[0] != "MEDIA_ID"):
-                print("TRIAL " , count+2)
                 time = float(l[3])
-                if (abs(trial_times[count][0] - time) < 0.1 or abs(trial_times[count][1] - time) < 0.1 or (time < trial_times[count][1] and time > trial_times[count][0])):
+                if ((time - trial_times[count][0] < 0.2 and time - trial_times[count][0] > 0.1)or abs(trial_times[count][1] - time) < 0.1 or (time < trial_times[count][1] and time > trial_times[count][0])):
                     trial_line_count += 1
+                    print("in gazepoint, current line is", l)
+                    print("TRIAL " , count+2, "participant ", participant_num)
+
                     print("found a match! current time of fixation" , time, " is in time interval from matlab: ", trial_times[count][0], " and ", trial_times[count][1])
                     # get where the participant looked
                     participant_x = float(l[5])*monitor_width
                     participant_y = float(l[6])*monitor_height#+100
-                    print("looking at x: ", participant_x, " y: ", participant_y)
+                    # print("looking at x: ", participant_x, " y: ", participant_y)
                     # compare to AOI of the trial
-                    print("left eye coords: ", eye_coords_left[count])
-                    print("right eye coords: ", eye_coords_right[count])
+                    # print("left eye coords: ", eye_coords_left[count])
+                    # print("right eye coords: ", eye_coords_right[count])
                     left_eye_coords = np.array(eye_coords_left[count]).reshape(-1, 2)
                     right_eye_coords = np.array(eye_coords_right[count]).reshape(-1, 2)
-
-                    
-                    
-                    # Calculate centers of the eyes
+                    # find centers of the eyes
                     left_eye_center = np.mean(left_eye_coords, axis=0)
                     right_eye_center = np.mean(right_eye_coords, axis=0)
-                    print("Left eye center:", left_eye_center)  # This should print [x, y] coordinates
+                    print("Left eye center:", left_eye_center) 
                     print("Right eye center:", right_eye_center)
-                    # Calculate Euclidean distances
+                    # calculate Euclidean distances
                     distance_to_left = np.sqrt((participant_x - left_eye_center[0])**2 + (participant_y - left_eye_center[1])**2)
                     distance_to_right = np.sqrt((participant_x - right_eye_center[0])**2 + (participant_y - right_eye_center[1])**2)
                     print("dist to left: ", distance_to_left, " dist to right: ", distance_to_right)
                     
                     isLeftEye = -1 # -1 = neither, 1 = left, 0 = right, 2 = both
-                    AOIdist = 90
-                    if (distance_to_right <= AOIdist and distance_to_left <= AOIdist):
-                        print("participant looked at both eye!")
-                        isLeftEye = 2
-                    elif (distance_to_left <= AOIdist and distance_to_right > AOIdist):
+                    AOIdist = 42
+                    # if (distance_to_right <= AOIdist and distance_to_left <= AOIdist):
+                    #     print("participant looked at both eye!")
+                    #     isLeftEye = 2
+                    if (distance_to_left <= AOIdist and distance_to_right > AOIdist):
                         print("participant looked at left eye!")
                         isLeftEye = 1
                     elif (distance_to_right <= AOIdist and distance_to_left > AOIdist):
@@ -390,27 +407,6 @@ def read_gazepoint(f, participant_num):
                         isLeftEye = 0
                     else:
                         print("participant looked at neither eye")
-
-
-                    # isInLeftAOI = cv.pointPolygonTest(np.array(eye_coords_left[count], dtype=np.int32), [participant_x, participant_y], True)
-                    # isInRightAOI = cv.pointPolygonTest(np.array(eye_coords_right[count], dtype=np.int32), [participant_x, participant_y], True)
-                    # print("distance from left: ", isInLeftAOI, " distance from right: ", isInRightAOI)
-                    # AOIdist = 40
-                    # isLeftEye = -1 # -1 = neither, 1 = left, 0 = right, 2 = both
-                    # if (isInRightAOI >= -AOIdist and isInLeftAOI >= -AOIdist):
-                    #     print("participant looked at both eye!")
-                    #     isLeftEye = 2
-                    # elif (isInLeftAOI >= -AOIdist and isInRightAOI < -AOIdist):
-                    #     print("participant looked at left eye!")
-                    #     isLeftEye = 1
-                    # elif (isInRightAOI >= -AOIdist and isInLeftAOI < -AOIdist):
-                    #     print("participant looked at right eye!")
-                    #     isLeftEye = 0
-                    # else:
-                    #     print("participant looked at neither eye")
-                    # print("total prop: ", total_prop_dict, "angle:", angles_prop[count], "translation: ", translations_prop[count])
-                    
-                    # total_prop_dict[315][2] += 1
                     # validity
                     if (float(l[10]) == 1):
                         time_spend_per_trial_list.append(isLeftEye)
@@ -418,10 +414,19 @@ def read_gazepoint(f, participant_num):
                         trial_line_count -= 1
                     # save proportions
                     if (trial_line_count == 1):
-                        print("appending data for csv", trial_line_count)
-                        print("currrent participant 2: ", participant_num)
-
-                        first_fixation_data.append([str(participant_num), str(count+2), str(isLeftEye), angles_prop[count], translations_prop[count]])
+                        # print("appending data for csv", trial_line_count)
+                        # print("currrent participant 2: ", participant_num)
+                        # checking for agreement;
+                        agreement = False
+                        if isLeftEye == 1 and human_coder[count] == 1:
+                            agreement = True
+                        elif isLeftEye == 0 and human_coder[count] == 2:
+                            agreement = True
+                        elif isLeftEye == -1 and (human_coder[count] != -2 and human_coder[count] != 1 and human_coder[count] != 2):
+                            agreement = True
+                        if agreement:
+                            total_agreement += 1
+                        first_fixation_data.append([str(participant_num), str(count+2), str(isLeftEye), angles_prop[count], translations_prop[count], human_coder[count], agreement])
                         total_prop_dict[angles_prop[count]][translations_prop[count]] += 1
                         if (distance_to_left <= AOIdist and distance_to_right > AOIdist):
                             prop_dict[angles_prop[count]][translations_prop[count]] += 1
@@ -439,6 +444,8 @@ def read_gazepoint(f, participant_num):
                         time_spend_per_trial_list.clear()
                 if (count >= len(trial_times)):
                     break
+        print(f"total agreement for participant {participant_num} is: {total_agreement/len(angles_prop)*100}")
+        first_fixation_agreement_data.append((participant_num, total_agreement/len(angles_prop)*100))
 # read_gazepoint()
 
 participants = [1, 3, 6, 10, 15, 19, 23, 24, 31, 35, 38, 44, 57, 59, 60, 61, 63, 66, 70, 77, 96, 97, 99]
@@ -462,7 +469,7 @@ def read_participant_files():
                 print(f"  Inner Key: {translation}, Value: {count}")
                 print("left eye: ", prop_dict[angle][translation])
                 proportion_data.append([str(current_participant), angle, translation, prop_dict[angle][translation]/count])
-        # if current_participant == 19:
+        # if current_participant == 24:
         #     break
 
 read_participant_files()
@@ -489,6 +496,12 @@ with open(prop_fixation_file_path, "w", newline="") as file:
     # Write first header and data
     writer.writerow(time_spent_on_left_in_trial_header)
     writer.writerows(time_spent_on_left_in_trial_data)
+prop_fixation_file_path = "./data/human_computer_agreement.csv"
+with open(prop_fixation_file_path, "w", newline="") as file:
+    writer = csv.writer(file)
+    # Write first header and data
+    writer.writerow(first_fixation_agreement_header)
+    writer.writerows(first_fixation_agreement_data)
 
 # ----------
 #  Code used to find the top left corner of each window:
